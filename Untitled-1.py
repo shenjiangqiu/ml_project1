@@ -2,13 +2,17 @@
 # To add a new markdown cell, type '# %% [markdown]'
 # %%
 import numpy as np
+
 from sklearn.preprocessing import PolynomialFeatures
 best_model_weight=[None]
 best_model_cv_loss=[None]
+best_model_degree=[None]
 def norm(input):
     input=input-input.mean(axis=0)
     input=input/input.std(axis=0)
     return input
+
+np.set_printoptions(precision=3)
 
 
 # %%
@@ -20,8 +24,8 @@ def my_regression(trainX,testX,noutputs):
 
     T=trainX[:,trainX.shape[1]-noutputs:]
     # try different model 
-    poly_degree=(1,2,3,4,5) # 1 for linear model,2~6 for poly model
-    m_lambda=(0,0.0001,0.001,0.01,0.1,1,10,100) # 0 for no regular, 
+    poly_degree=(1,2,3,4,5,6) # 1 for linear model,2~6 for poly model
+    m_lambda=(0,0.0001,0.001,0.01,0.1,1,10,100,1000) # 0 for no regular, 
 
     # using different method to build the input for different modle
     models_map=dict() # record all the models and cv loss
@@ -36,7 +40,7 @@ def my_regression(trainX,testX,noutputs):
         min_loss=float("inf")
         for t_lambda in m_lambda: #test every lambda for
             if do_print and t_poly==1 and t_lambda==0:
-                print("start cv at linear base function, the weight and loss are showed:")
+                print("start cv at linear base function, the weight and loss are showed:   ")
             #print("lmbda=",t_lambda)
             cv=np.array([])
             for cross_valid in range(5):# cross validation
@@ -57,7 +61,7 @@ def my_regression(trainX,testX,noutputs):
                 #    W=np.dot(np.dot(np.linalg.inv( t_lambda * np.eye(train_case.shape[1]) + np.dot(train_case.T,train_case)),train_case.T),train_T)#
                 #if t_poly==1 and t_lambda==0 and do_print==True:
                 n_col=train_case.shape[1]
-                if len(train_case)==1:
+                if t_lambda==0:
                     W=np.dot(np.linalg.pinv(train_case),train_T)
                 else:
                     W=np.linalg.lstsq(train_case.T.dot(train_case) + t_lambda * np.identity(n_col), train_case.T.dot(train_T),rcond=None)[0]
@@ -76,7 +80,6 @@ def my_regression(trainX,testX,noutputs):
             models_map[(t_poly,t_lambda)]=np.average(cv)
             if np.average(cv)<min_loss:
                 min_loss=np.average(cv)
-    #print(models_map)
     best_model_cv_loss[0]=min_loss
     min=float("inf")
     min_model=0
@@ -90,7 +93,7 @@ def my_regression(trainX,testX,noutputs):
     #print(min_model)
     #print(min)
     t_poly,t_lambda=min_model
-
+    best_model_degree[0]=t_poly
     # train the whole trainning set
     phi=trainX[:,0:trainX.shape[1]-noutputs]
         # build poly input
@@ -165,11 +168,20 @@ for y,delta in zip([y1,y2,y3,y4],[0.1,0.2,0.5,1]):
 
 # %%
 # question 3:
+original_x=np.linspace(-5,5,500).T
+normed_original_x=norm(original_x)
 
-num_of_trainining=[2,5,10,20,50,100,200,500]
-div=[0.1,0.2,0.5,1]
+
+num_of_trainining=np.array([2,5,10,20,50,100,200,500])
+div=np.array([0.1,0.2,0.5,1])
+
+origin_y=np.array([[fx(t,d) for t in original_x ] for d in div ]).T
+normed_original_y=norm(origin_y)
+print(normed_original_y)
+
 loss_dict=dict()
 weight_dict=dict()
+degree_dict=dict()
 do_print=False
 i=0
 j=0
@@ -179,21 +191,61 @@ for num in num_of_trainining:
     j=0
     for d in div:
 
-        x=np.linspace(-4.8,5.2,num)
-        y=[fx(t,d) for t in x ]
-        
-        trainX=[[t1,t2] for t1,t2 in zip(x,y) ]
+        index=np.array([i for i in range(0,500,int(500/num))])
+        print(index)
+        index=index.astype(int)
+        x=normed_original_x[index]
+        print(x)
+        y=normed_original_y[index,j]
+        print(y)
+     
+        trainX=np.array([[t1,t2] for t1,t2 in zip(x,y) ])
         #print(trainX)
-        trainX=np.array(trainX)
-        trainX=norm(trainX)
         #print(trainX)
         trainOut=my_regression(trainX,trainX[:,0:-1],1)
         loss_dict[(num,d)]=best_model_cv_loss[0]
         weight_dict[(num,d)]=best_model_weight[0]
+        degree_dict[(num,d)]=best_model_degree[0]
         data[i,j]=best_model_cv_loss[0]
         j=j+1
     i=i+1
-print(data)
+for i,d in enumerate(data):
+    
+    line='|'.join(["num of training = %3d"%num_of_trainining[i]]+[("%.3f"%x).ljust(12) for x in d])
+    if i==0:
+        title='|'.join(["name".ljust(len("num of training = %3d"%num_of_trainining[i]))]+[("noise=%.1f"%d).ljust(12) for d in div ])
+        print(title)
+        print("-"*len(title))
+    print(line)
+
+
+# %%
+# now we need to choose the top 2 and the bottom 2, and plot it
+sort=np.argsort(data.reshape(-1))
+top2=np.array(sort[:2])
+bot2=np.array(sort[-2:])
+print(top2)
+print(bot2)
+noise_top2=div[top2%4]
+n_t_top2=num_of_trainining[(top2/4).astype(int)]
+noise_bot2=div[bot2%4]
+n_t_bot2=num_of_trainining[(bot2/4).astype(int)]
+
+x=normed_original_x[  [i for i in range(0,500,5)]]
+y=np.array([ fx(i,0) for i in original_x ])
+y=norm(y.reshape(-1,1))
+y=y[ [i for i in range(0,500,5)]]
+x=x.reshape(-1,1)
+for n_data,n_noise in zip([n_t_top2,n_t_bot2],[noise_top2,noise_bot2]):
+    for num,d in zip(n_data,n_noise):
+        print("num of trainning data:%d, noise level: %.2f" %(num,d))
+        plt.clf()
+        plt.plot(x,y,label="original")
+        fit=PolynomialFeatures(degree_dict[(num,d)])
+        featureX=fit.fit_transform(x)
+        plt.plot(x,np.dot(featureX,weight_dict[(num,d)]),label="calculated")
+        plt.legend()
+        plt.show()
 
 
 # %%
@@ -208,8 +260,6 @@ for d in data:
     inputs=np.array(inputs)
     inputs=inputs.astype(np.float)
     inputs=norm(inputs)
-
-
     do_print=True
     testOut=my_regression(inputs,inputs[:,0:-d[1]],d[1])
     pass
